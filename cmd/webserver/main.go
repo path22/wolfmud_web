@@ -11,7 +11,7 @@ import (
 	"code.wolfmud.org/WolfMUD.git/stats"
 	"code.wolfmud.org/WolfMUD.git/zones"
 
-	"github.com/path22/wolfmud_web/server"
+	"github.com/path22/wolfmud_web/pkg/server"
 )
 
 func main() {
