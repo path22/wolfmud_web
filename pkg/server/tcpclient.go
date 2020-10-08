@@ -1,34 +1,62 @@
 package server
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
-
-	"code.wolfmud.org/WolfMUD.git/config"
+	"strings"
+	"time"
 )
+
+var connections = make(map[string]*net.Conn)
 
 type tcpClient struct {
 	tcpConn net.Conn
 }
 
 func NewTCPClient() *tcpClient {
-	tcpConn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", config.Server.Host, config.Server.Port))
-	if err != nil {
-		panic(err)
-	}
-	return &tcpClient{
-		tcpConn: tcpConn,
-	}
+	return &tcpClient{}
 }
 
 func (tc *tcpClient) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	message := r.URL.Path[1:]
-	tc.tcpConn.Write([]byte(message))
-	answer, err := ioutil.ReadAll(tc.tcpConn)
-	if err != nil {
-		w.Write([]byte(err.Error()))
+	encoder := json.NewEncoder(w)
+
+	connection := r.FormValue("connection")
+	message := r.FormValue("cmd")
+	fmt.Println("Command", connection, message, connections)
+	tcpConn, ok := connections[connection]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
-	w.Write(answer)
+	conn := *tcpConn
+	_, err := conn.Write([]byte(message + "\n"))
+	if err != nil {
+		encoder.Encode(map[string]interface{}{
+			"err": err.Error(),
+		})
+	}
+	var answer string
+	rdr := bufio.NewReader(conn)
+	conn.SetReadDeadline(time.Now().Add(time.Millisecond * 10))
+	func() {
+		defer func() {
+			err := recover().(error)
+			if !strings.Contains(err.Error(), "timeout") {
+				panic(err)
+			}
+		}()
+		for {
+			line, err := rdr.ReadString('\n')
+			if err != nil {
+				panic(err)
+			}
+			answer += line
+		}
+	}()
+	encoder.Encode(map[string]interface{}{
+		"ans": string(answer),
+	})
 }

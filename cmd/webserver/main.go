@@ -5,7 +5,6 @@ import (
 	"code.wolfmud.org/WolfMUD.git/config"
 	"code.wolfmud.org/WolfMUD.git/stats"
 	"code.wolfmud.org/WolfMUD.git/zones"
-
 	"github.com/path22/wolfmud_web/pkg/server"
 )
 
