@@ -1,13 +1,11 @@
 package server
 
 import (
-	"code.wolfmud.org/WolfMUD.git/config"
 	"fmt"
-	"html/template"
-	"math/rand"
+	webconfig "github.com/path22/wolfmud_web/pkg/config"
+	"github.com/path22/wolfmud_web/pkg/sessions"
 	"net"
 	"net/http"
-	"strconv"
 )
 
 type Server struct {
@@ -16,55 +14,25 @@ type Server struct {
 	srv  http.Server
 }
 
-var tmpl, err = template.New("main_page").Parse(`
-<html>
-<head>
-</head>
-<body>
-	<label>command: <input id="command" type="text" name="command"></label>
-	<input id="send" type="button" value="Send">
-	<h3 id="answer"></h3>
-<script>
-(function() {
-	var command = document.getElementById("command");
-	var send = document.getElementById("send");
-	send.onclick = function() {
-		fetch('/command?connection={{.ConnectionID}}&cmd='+command.value)
-		  .then(response => response.json())
-		  .then(data => {
-			var ans = document.getElementById("answer");
-			ans.innerHTML = data.ans
-		  });
-	}
-}())
-</script>
-</body>
-</html>
-`)
-
-func New(host string, port string) *Server {
+func New(conf *webconfig.System) *Server {
 	s := new(Server)
-	s.Host = host
-	s.Port = port
-	webSrvMux := http.NewServeMux()
-	webSrvMux.HandleFunc("/page", func(w http.ResponseWriter, r *http.Request) {
-		connection := strconv.Itoa(rand.Int())
-		data := map[string]interface{}{
-			"ConnectionID": connection,
-		}
-		tcpConn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", config.Server.Host, config.Server.Port))
-		if err != nil {
-			panic(err)
-		}
-		connections[connection] = &tcpConn
-		tmpl.Execute(w, data)
-	})
-	tcpClient := NewTCPClient()
-	webSrvMux.Handle("/command", tcpClient)
+	s.Host = conf.Address
+	s.Port = conf.Port
+
+	webSrvMux, shutdown := routing(conf)
 	s.srv = http.Server{
 		Handler: webSrvMux,
 	}
+	s.srv.RegisterOnShutdown(shutdown)
 	return s
+}
+
+func routing(conf *webconfig.System) (*http.ServeMux, func()) {
+	webSrvMux := http.NewServeMux()
+	sess := sessions.New(conf)
+	webSrvMux.HandleFunc("/", sess.Interface)
+	webSrvMux.HandleFunc("/command", sess.Command)
+	return webSrvMux, sess.Shutdown
 }
 
 func (s *Server) Run() {

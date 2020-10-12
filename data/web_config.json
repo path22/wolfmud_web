@@ -1,0 +1,6 @@
+{
+  "address": "127.0.0.1",
+  "port": "8080",
+  "sessions_clean_interval": "10s",
+  "sessions_live_time": "1h"
+}
