@@ -32,6 +32,7 @@ func routing(conf *webconfig.System) (*http.ServeMux, func()) {
 	sess := sessions.New(conf)
 	webSrvMux.HandleFunc("/", sess.Interface)
 	webSrvMux.HandleFunc("/command", sess.Command)
+	webSrvMux.HandleFunc("/message", sess.Message)
 	return webSrvMux, sess.Shutdown
 }
 

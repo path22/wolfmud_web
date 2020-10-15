@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	webconfig "github.com/path22/wolfmud_web/pkg/config"
@@ -122,10 +123,49 @@ func (s *Sessions) Interface(w http.ResponseWriter, r *http.Request) {
 
 	s.add(sessionID)
 
-	templateParams := map[string]interface{}{
-		"SessionID": sessionID,
+	expire := time.Now().AddDate(0, 0, 1)
+	http.SetCookie(w, &http.Cookie{
+		Name:    sessionCookie,
+		Value:   sessionID,
+		Expires: expire,
+	})
+
+	tmpl.Execute(w, nil)
+}
+
+func (s *Sessions) Message(w http.ResponseWriter, r *http.Request) {
+
+	cookie, err := r.Cookie(sessionCookie)
+	if err != nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
-	tmpl.Execute(w, templateParams)
+
+	sessionID := cookie.Value
+
+	flusher, ok := w.(http.Flusher)
+
+	if !ok {
+		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	conn := s.get(sessionID)
+	connR := bufio.NewReader(*conn)
+
+	for {
+		line, _, err := connR.ReadLine()
+		if err != nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Write(bytes.Join([][]byte{line, []byte("\n")}, []byte("")))
+		flusher.Flush()
+	}
 }
 
 func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +178,9 @@ func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
 	}
 
 	command := r.FormValue("cmd")
+	if command == "QUIT" {
+		return
+	}
 
 	connection := s.get(id.Value)
 	conn := *connection
@@ -173,20 +216,45 @@ var tmpl = template.Must(template.New("main_page").Parse(`
 <head>
 </head>
 <body>
+	<iframe src="http://localhost:8080/message">
+	</iframe>
 	<label>command: <input id="command" type="text" name="command"></label>
-	<input id="send" type="button" value="Send">
-	<h3 id="answer"></h3>
+	<input id="send" type="button" value="Enter">
+	<input id="otherAccount" type="button" value="Other Account">
 <script>
 (function() {
-	var command = document.getElementById("command");
-	var send = document.getElementById("send");
-	send.onclick = function() {
-		fetch('/command?connection={{.ConnectionID}}&cmd='+command.value)
+	var commandField = document.getElementById("command");
+	commandField.onkeydown = function(e) {
+		if (e.keyCode != 13) {
+			return
+		}
+		fetch('/command?cmd='+command.value)
 		  .then(response => response.json())
 		  .then(data => {
 			var ans = document.getElementById("answer");
 			ans.innerHTML = data.ans
 		  });
+	}
+	var sendButton = document.getElementById("send");
+	send.onclick = function(e) {
+		fetch('/command?cmd='+command.value)
+		  .then(response => response.json())
+		  .then(data => {
+			var ans = document.getElementById("answer");
+			ans.innerHTML = data.ans
+		  });
+	}
+	
+	var otherAccountButton = document.getElementById("otherAccount");
+	otherAccountButton.onclick = function() {
+		var cookies = document.cookie.split(";");
+		for (var i = 0; i < cookies.length; i++) {
+			var cookie = cookies[i];
+			var eqPos = cookie.indexOf("=");
+			var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+			document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+		}
+	window.location.reload(true);
 	}
 }())
 </script>
