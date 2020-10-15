@@ -216,13 +216,15 @@ var tmpl = template.Must(template.New("main_page").Parse(`
 <head>
 </head>
 <body>
-	<iframe src="http://localhost:8080/message">
+	<iframe id="message">
 	</iframe>
 	<label>command: <input id="command" type="text" name="command"></label>
 	<input id="send" type="button" value="Enter">
 	<input id="otherAccount" type="button" value="Other Account">
 <script>
 (function() {
+	var messageField = document.getElementById("message");
+	messageField.src = window.location + "/message"
 	var commandField = document.getElementById("command");
 	commandField.onkeydown = function(e) {
 		if (e.keyCode != 13) {
