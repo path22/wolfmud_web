@@ -224,7 +224,7 @@ var tmpl = template.Must(template.New("main_page").Parse(`
 <script>
 (function() {
 	var messageField = document.getElementById("message");
-	messageField.src = window.location + "/message"
+	messageField.src = window.location + "message"
 	var commandField = document.getElementById("command");
 	commandField.onkeydown = function(e) {
 		if (e.keyCode != 13) {
