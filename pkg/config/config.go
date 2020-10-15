@@ -2,9 +2,9 @@ package config
 
 import (
 	"encoding/json"
-	"os"
 	"path"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -24,15 +24,21 @@ func ProjectRootPath() string {
 }
 
 func ParseConfig() (*System, error) {
-	root := ProjectRootPath()
-	configPath := path.Join(root, "data", "web_config.json")
-	f, err := os.Open(configPath)
-	if err != nil {
-		return nil, err
-	}
-	decoder := json.NewDecoder(f)
+	//root := ProjectRootPath()
+	//configPath := path.Join(root, "data", "web_config.json")
+	//f, err := os.Open(configPath)
+	//if err != nil {
+	//	return nil, err
+	//}
+	configJSON := `{
+	  "address": "127.0.0.1",
+	  "port": "8080",
+	  "sessions_clean_interval": "10s",
+	  "sessions_live_time": "1h"
+	}`
+	decoder := json.NewDecoder(strings.NewReader(configJSON))
 	var conf System
-	err = decoder.Decode(&conf)
+	err := decoder.Decode(&conf)
 	if err != nil {
 		return nil, err
 	}
