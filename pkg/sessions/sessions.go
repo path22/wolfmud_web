@@ -2,7 +2,6 @@ package sessions
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	webconfig "github.com/path22/wolfmud_web/pkg/config"
@@ -10,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -73,12 +71,19 @@ func (s *Sessions) add(id string) {
 	s.mux.Unlock()
 }
 
-func (s *Sessions) update(id string) {
+func (s *Sessions) drop(id string) {
 	s.mux.Lock()
-	session := s.sessions[id]
+	delete(s.sessions, id)
+	s.mux.Unlock()
+}
+
+func (s *Sessions) update(id string) bool {
+	s.mux.Lock()
+	session, ok := s.sessions[id]
 	session.lastUpdate = time.Now()
 	s.sessions[id] = session
 	s.mux.Unlock()
+	return ok
 }
 
 func (s *Sessions) get(id string) *net.Conn {
@@ -163,7 +168,8 @@ func (s *Sessions) Message(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		w.Write(bytes.Join([][]byte{line, []byte("\n")}, []byte("")))
+		coloredLine := replaceColors(string(line))
+		w.Write([]byte(coloredLine + "\n"))
 		flusher.Flush()
 	}
 }
@@ -179,35 +185,32 @@ func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
 
 	command := r.FormValue("cmd")
 	if command == "QUIT" {
+		s.drop(id.Value)
+		setZeroCookie(w)
+		http.Redirect(w, r, r.URL.String(), http.StatusPermanentRedirect)
 		return
 	}
 
+	ok := s.update(id.Value)
+	if !ok {
+		setZeroCookie(w)
+		http.Redirect(w, r, r.URL.String(), http.StatusPermanentRedirect)
+		return
+	}
 	connection := s.get(id.Value)
 	conn := *connection
 	_, err = conn.Write([]byte(command + "\n"))
 	if err != nil {
 		encoder.Encode(jsonErrMessage)
 	}
-	var response string
-	rdr := bufio.NewReader(conn)
-	conn.SetReadDeadline(time.Now().Add(time.Millisecond * 10))
-	func() {
-		defer func() {
-			err := recover().(error)
-			if !strings.Contains(err.Error(), "timeout") {
-				panic(err)
-			}
-		}()
-		for {
-			line, err := rdr.ReadString('\n')
-			if err != nil {
-				panic(err)
-			}
-			response += line
-		}
-	}()
-	encoder.Encode(map[string]interface{}{
-		"ans": string(response),
+}
+
+func setZeroCookie(w http.ResponseWriter) {
+	expire := time.Now().AddDate(0, 0, 0)
+	http.SetCookie(w, &http.Cookie{
+		Name:    sessionCookie,
+		Value:   "sess",
+		Expires: expire,
 	})
 }
 
@@ -220,44 +223,36 @@ var tmpl = template.Must(template.New("main_page").Parse(`
 	</iframe>
 	<label>command: <input id="command" type="text" name="command"></label>
 	<input id="send" type="button" value="Enter">
-	<input id="otherAccount" type="button" value="Other Account">
+	<!-- <input id="otherAccount" type="button" value="Other Account"> -->
 <script>
 (function() {
 	var messageField = document.getElementById("message");
-	messageField.src = window.location + "message"
+	messageField.src = window.location.href + "message"
 	var commandField = document.getElementById("command");
 	commandField.onkeydown = function(e) {
 		if (e.keyCode != 13) {
 			return
 		}
-		fetch('/command?cmd='+command.value)
-		  .then(response => response.json())
-		  .then(data => {
-			var ans = document.getElementById("answer");
-			ans.innerHTML = data.ans
-		  });
+		fetch('/command?cmd='+command.value);
+		command.value = "";
 	}
 	var sendButton = document.getElementById("send");
 	send.onclick = function(e) {
-		fetch('/command?cmd='+command.value)
-		  .then(response => response.json())
-		  .then(data => {
-			var ans = document.getElementById("answer");
-			ans.innerHTML = data.ans
-		  });
+		fetch('/command?cmd='+command.value);
+		command.value = "";
 	}
 	
-	var otherAccountButton = document.getElementById("otherAccount");
-	otherAccountButton.onclick = function() {
-		var cookies = document.cookie.split(";");
-		for (var i = 0; i < cookies.length; i++) {
-			var cookie = cookies[i];
-			var eqPos = cookie.indexOf("=");
-			var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-			document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
-		}
-	window.location.reload(true);
-	}
+	//var otherAccountButton = document.getElementById("otherAccount");
+	//otherAccountButton.onclick = function() {
+	//	var cookies = document.cookie.split(";");
+	//	for (var i = 0; i < cookies.length; i++) {
+	//		var cookie = cookies[i];
+	//		var eqPos = cookie.indexOf("=");
+	//		var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+	//		document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+	//	}
+	//	window.location.reload(true);
+	//}
 }())
 </script>
 </body>
