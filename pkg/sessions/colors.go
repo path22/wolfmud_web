@@ -56,15 +56,18 @@ var Colors = map[string]string{
 	BGMagenta: "",
 	BGCyan:    "",
 	BGWhite:   "",
+	//Brown     : "",
+	//BGBrown   : "",
+	//Good   : "",
+	//Info   : "",
+	//Bad    : "",
+	//Prompt : "",
 }
 
 func replaceColors(str string) string {
 	for color, hexColor := range Colors {
-		htmlTagOpen := `<span style="color:` + hexColor + `">`
-		htmlTagClose := "</span>"
-		if strings.Contains(str, color) {
-			str = strings.Replace(str, color, htmlTagOpen, 1)
-			str += htmlTagClose
+		if strings.Contains(str, ESC) {
+			str = strings.Replace(str, color, hexColor, -1)
 		}
 
 	}

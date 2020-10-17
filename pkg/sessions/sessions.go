@@ -126,14 +126,12 @@ func (s *Sessions) Interface(w http.ResponseWriter, r *http.Request) {
 		sessionID = cookie.Value
 	}
 
-	s.add(sessionID)
+	ok := s.update(sessionID)
+	if !ok {
+		s.add(sessionID)
+	}
 
-	expire := time.Now().AddDate(0, 0, 1)
-	http.SetCookie(w, &http.Cookie{
-		Name:    sessionCookie,
-		Value:   sessionID,
-		Expires: expire,
-	})
+	setCookieDays(w, 1)
 
 	tmpl.Execute(w, nil)
 }
@@ -159,6 +157,11 @@ func (s *Sessions) Message(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	ok = s.update(cookie.Value)
+	if !ok {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	conn := s.get(sessionID)
 	connR := bufio.NewReader(*conn)
 
@@ -186,14 +189,14 @@ func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
 	command := r.FormValue("cmd")
 	if command == "QUIT" {
 		s.drop(id.Value)
-		setZeroCookie(w)
+		setCookieDays(w, 0)
 		http.Redirect(w, r, r.URL.String(), http.StatusPermanentRedirect)
 		return
 	}
 
 	ok := s.update(id.Value)
 	if !ok {
-		setZeroCookie(w)
+		setCookieDays(w, 0)
 		http.Redirect(w, r, r.URL.String(), http.StatusPermanentRedirect)
 		return
 	}
@@ -203,10 +206,12 @@ func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		encoder.Encode(jsonErrMessage)
 	}
+
+	setCookieDays(w, 1)
 }
 
-func setZeroCookie(w http.ResponseWriter) {
-	expire := time.Now().AddDate(0, 0, 0)
+func setCookieDays(w http.ResponseWriter, days int) {
+	expire := time.Now().AddDate(0, 0, days)
 	http.SetCookie(w, &http.Cookie{
 		Name:    sessionCookie,
 		Value:   "sess",
