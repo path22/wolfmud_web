@@ -131,7 +131,7 @@ func (s *Sessions) Interface(w http.ResponseWriter, r *http.Request) {
 		s.add(sessionID)
 	}
 
-	setCookieDays(w, 1)
+	setCookieDays(w, 1, sessionID)
 
 	tmpl.Execute(w, nil)
 }
@@ -189,14 +189,14 @@ func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
 	command := r.FormValue("cmd")
 	if command == "QUIT" {
 		s.drop(id.Value)
-		setCookieDays(w, 0)
+		setCookieDays(w, 0, id.Value)
 		http.Redirect(w, r, r.URL.String(), http.StatusPermanentRedirect)
 		return
 	}
 
 	ok := s.update(id.Value)
 	if !ok {
-		setCookieDays(w, 0)
+		setCookieDays(w, 0, id.Value)
 		http.Redirect(w, r, r.URL.String(), http.StatusPermanentRedirect)
 		return
 	}
@@ -207,14 +207,14 @@ func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
 		encoder.Encode(jsonErrMessage)
 	}
 
-	setCookieDays(w, 1)
+	setCookieDays(w, 1, id.Value)
 }
 
-func setCookieDays(w http.ResponseWriter, days int) {
+func setCookieDays(w http.ResponseWriter, days int, cookie string) {
 	expire := time.Now().AddDate(0, 0, days)
 	http.SetCookie(w, &http.Cookie{
 		Name:    sessionCookie,
-		Value:   "sess",
+		Value:   cookie,
 		Expires: expire,
 	})
 }
