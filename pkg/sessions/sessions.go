@@ -148,6 +148,8 @@ func (s *Sessions) Message(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 
+	notify := w.(http.CloseNotifier).CloseNotify()
+
 	if !ok {
 		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 		return
@@ -165,7 +167,13 @@ func (s *Sessions) Message(w http.ResponseWriter, r *http.Request) {
 	conn := s.get(sessionID)
 	connR := bufio.NewReader(*conn)
 
+loop:
 	for {
+		select {
+		case <-notify:
+			break loop
+		case <-time.After(time.Millisecond):
+		}
 		line, _, err := connR.ReadLine()
 		if err != nil {
 			w.WriteHeader(http.StatusNoContent)
