@@ -28,7 +28,7 @@ var (
 
 type Sessions struct {
 	mux      sync.Mutex
-	sessions map[string]session // map[sessionID]Session
+	sessions map[string]*session // map[sessionID]Session
 
 	shutdown      bool
 	cleanInterval time.Duration
@@ -38,7 +38,25 @@ type Sessions struct {
 type session struct {
 	id         string
 	tcpConnect *net.Conn
+	bufMux     sync.Mutex
+	buffer     []byte
 	lastUpdate time.Time
+}
+
+func (s *session) run() {
+	//(*s.tcpConnect).SetReadDeadline(time.Now().Add(time.Millisecond*200))
+	connR := bufio.NewReader(*s.tcpConnect)
+
+	for {
+		line, _, err := connR.ReadLine()
+		if err != nil {
+			fmt.Println("err read session")
+		}
+		coloredLine := replaceColors(string(line))
+		s.bufMux.Lock()
+		s.buffer = append(s.buffer, []byte(coloredLine+"<br>")...)
+		s.bufMux.Unlock()
+	}
 }
 
 func New(conf *webconfig.System) *Sessions {
@@ -51,25 +69,29 @@ func New(conf *webconfig.System) *Sessions {
 		panic(err)
 	}
 	return &Sessions{
-		sessions:      make(map[string]session),
+		sessions:      make(map[string]*session),
 		cleanInterval: sessionsCleanInterval,
 		liveTime:      sessionsLiveTime,
 	}
 }
 
-func (s *Sessions) add(id string) {
-	tcpConn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", config.Server.Host, config.Server.Port))
-	if err != nil {
-		panic(err)
-	}
-	s.mux.Lock()
-	s.sessions[id] = session{
-		id:         id,
-		tcpConnect: &tcpConn,
-		lastUpdate: time.Now(),
-	}
-	s.mux.Unlock()
-}
+//
+//func (s *Sessions) add(id string) {
+//	tcpConn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", config.Server.Host, config.Server.Port))
+//	if err != nil {
+//		panic(err)
+//	}
+//	sess := &session{
+//		id:         id,
+//		tcpConnect: &tcpConn,
+//		lastUpdate: time.Now(),
+//		buffer: []byte(""),
+//	}
+//	go sess.run()
+//	s.mux.Lock()
+//	s.sessions[id] = sess
+//	s.mux.Unlock()
+//}
 
 func (s *Sessions) drop(id string) {
 	s.mux.Lock()
@@ -79,18 +101,31 @@ func (s *Sessions) drop(id string) {
 
 func (s *Sessions) update(id string) bool {
 	s.mux.Lock()
-	session, ok := s.sessions[id]
-	session.lastUpdate = time.Now()
-	s.sessions[id] = session
-	s.mux.Unlock()
+	defer s.mux.Unlock()
+	sess, ok := s.sessions[id]
+	if !ok {
+		tcpConn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", config.Server.Host, config.Server.Port))
+		if err != nil {
+			panic(err)
+		}
+		sess = &session{
+			id:         id,
+			tcpConnect: &tcpConn,
+			lastUpdate: time.Now(),
+			buffer:     []byte(""),
+		}
+		go sess.run()
+	} else {
+		sess.lastUpdate = time.Now()
+	}
+	s.sessions[id] = sess
 	return ok
 }
 
-func (s *Sessions) get(id string) *net.Conn {
+func (s *Sessions) get(id string) *session {
 	s.mux.Lock()
 	defer s.mux.Unlock()
-
-	return s.sessions[id].tcpConnect
+	return s.sessions[id]
 }
 
 func (s *Sessions) manager() {
@@ -101,7 +136,7 @@ func (s *Sessions) manager() {
 		oldestLastUpdate := time.Now().Add(-s.liveTime)
 
 		s.mux.Lock()
-		var sessionsCopy = make(map[string]session)
+		var sessionsCopy = make(map[string]*session)
 		for id, session := range s.sessions {
 			if session.lastUpdate.After(oldestLastUpdate) {
 				sessionsCopy[id] = session
@@ -126,10 +161,10 @@ func (s *Sessions) Interface(w http.ResponseWriter, r *http.Request) {
 		sessionID = cookie.Value
 	}
 
-	ok := s.update(sessionID)
-	if !ok {
-		s.add(sessionID)
-	}
+	s.update(sessionID)
+	//if !ok {
+	//s.add(sessionID)
+	//}
 
 	setCookieDays(w, 1, sessionID)
 
@@ -146,43 +181,29 @@ func (s *Sessions) Message(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := cookie.Value
 
-	flusher, ok := w.(http.Flusher)
+	//flusher, ok := w.(http.Flusher)
 
-	notify := w.(http.CloseNotifier).CloseNotify()
+	//if !ok {
+	//	http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
+	//	return
+	//}
+	//w.Header().Set("Content-Type", "text/event-stream")
+	//w.Header().Set("Cache-Control", "no-cache")
+	//w.Header().Set("Connection", "keep-alive")
+	//w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	if !ok {
-		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	ok = s.update(cookie.Value)
+	ok := s.update(sessionID)
 	if !ok {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	conn := s.get(sessionID)
-	connR := bufio.NewReader(*conn)
+	sess := s.get(sessionID)
+	sess.bufMux.Lock()
+	w.Write(sess.buffer)
+	sess.buffer = []byte("")
+	sess.bufMux.Unlock()
 
-loop:
-	for {
-		select {
-		case <-notify:
-			break loop
-		case <-time.After(time.Millisecond):
-		}
-		line, _, err := connR.ReadLine()
-		if err != nil {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		coloredLine := replaceColors(string(line))
-		w.Write([]byte(coloredLine + "\n"))
-		flusher.Flush()
-	}
+	//flusher.Flush()
 }
 
 func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
@@ -208,8 +229,8 @@ func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, r.URL.String(), http.StatusPermanentRedirect)
 		return
 	}
-	connection := s.get(id.Value)
-	conn := *connection
+	sess := s.get(id.Value)
+	conn := *sess.tcpConnect
 	_, err = conn.Write([]byte(command + "\n"))
 	if err != nil {
 		encoder.Encode(jsonErrMessage)
@@ -232,15 +253,24 @@ var tmpl = template.Must(template.New("main_page").Parse(`
 <head>
 </head>
 <body>
-	<iframe id="message">
-	</iframe>
+	<div id="message"></div>
 	<label>command: <input id="command" type="text" name="command"></label>
 	<input id="send" type="button" value="Enter">
 	<!-- <input id="otherAccount" type="button" value="Other Account"> -->
 <script>
 (function() {
 	var messageField = document.getElementById("message");
-	messageField.src = window.location.href + "message"
+	setInterval(function() {
+		fetch('/message')
+  		.then(response => response.text())
+		.then(data => {
+			if (data == "" || data == undefined || data == null) {
+				return
+			}
+			messageField.innerHTML += data+"\n";
+			window.scrollTo(0,document.body.scrollHeight);
+		});
+	}, 1000);
 	var commandField = document.getElementById("command");
 	commandField.onkeydown = function(e) {
 		if (e.keyCode != 13) {
