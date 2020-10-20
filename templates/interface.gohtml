@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WolfMud</title>
+</head>
+<body style="background-color: gray;">
+<div id="message"></div>
+<div style="width: 90%; text-align: center; position: absolute; bottom: 20px">
+    <label style="color:white;">Command:
+        <input style="width: 50%; height: 30px" id="command" type="text" name="command"></label>
+    <input style="height: 36px;" id="send" type="button" value="Enter">
+</div>
+<!-- <input id="otherAccount" type="button" value="Other Account"> -->
+<script>
+    (function() {
+        let messageField = document.getElementById("message");
+        setInterval(function() {
+            fetch('/message')
+                .then(response => response.text())
+                .then(data => {
+                    if (data.toString() === "" || data == undefined) {
+                        return
+                    }
+                    messageField.innerHTML += data+"\n";
+                    window.scrollTo(0,document.body.scrollHeight);
+                });
+        }, 1000);
+        let commandField = document.getElementById("command");
+        commandField.onkeydown = function(e) {
+            if (e.keyCode === 13) {
+                fetch('/command?cmd='+commandField.value);
+                commandField.value = "";
+            }
+        }
+        let sendButton = document.getElementById("send");
+        sendButton.onclick = function(e) {
+            fetch('/command?cmd='+commandField.value);
+            commandField.value = "";
+        }
+
+        //var otherAccountButton = document.getElementById("otherAccount");
+        //otherAccountButton.onclick = function() {
+        //	var cookies = document.cookie.split(";");
+        //	for (var i = 0; i < cookies.length; i++) {
+        //		var cookie = cookies[i];
+        //		var eqPos = cookie.indexOf("=");
+        //		var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+        //		document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        //	}
+        //	window.location.reload(true);
+        //}
+    }())
+</script>
+</body>
+</html>

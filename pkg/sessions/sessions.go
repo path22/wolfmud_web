@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"path"
 	"strconv"
 	"sync"
 	"text/template"
@@ -181,17 +182,6 @@ func (s *Sessions) Message(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := cookie.Value
 
-	//flusher, ok := w.(http.Flusher)
-
-	//if !ok {
-	//	http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
-	//	return
-	//}
-	//w.Header().Set("Content-Type", "text/event-stream")
-	//w.Header().Set("Cache-Control", "no-cache")
-	//w.Header().Set("Connection", "keep-alive")
-	//w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	ok := s.update(sessionID)
 	if !ok {
 		w.WriteHeader(http.StatusNoContent)
@@ -202,8 +192,6 @@ func (s *Sessions) Message(w http.ResponseWriter, r *http.Request) {
 	w.Write(sess.buffer)
 	sess.buffer = []byte("")
 	sess.bufMux.Unlock()
-
-	//flusher.Flush()
 }
 
 func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
@@ -248,56 +236,4 @@ func setCookieDays(w http.ResponseWriter, days int, cookie string) {
 	})
 }
 
-var tmpl = template.Must(template.New("main_page").Parse(`
-<html>
-<head>
-</head>
-<body>
-	<div id="message"></div>
-	<label>command: <input id="command" type="text" name="command"></label>
-	<input id="send" type="button" value="Enter">
-	<!-- <input id="otherAccount" type="button" value="Other Account"> -->
-<script>
-(function() {
-	var messageField = document.getElementById("message");
-	setInterval(function() {
-		fetch('/message')
-  		.then(response => response.text())
-		.then(data => {
-			if (data == "" || data == undefined || data == null) {
-				return
-			}
-			messageField.innerHTML += data+"\n";
-			window.scrollTo(0,document.body.scrollHeight);
-		});
-	}, 1000);
-	var commandField = document.getElementById("command");
-	commandField.onkeydown = function(e) {
-		if (e.keyCode != 13) {
-			return
-		}
-		fetch('/command?cmd='+command.value);
-		command.value = "";
-	}
-	var sendButton = document.getElementById("send");
-	send.onclick = function(e) {
-		fetch('/command?cmd='+command.value);
-		command.value = "";
-	}
-	
-	//var otherAccountButton = document.getElementById("otherAccount");
-	//otherAccountButton.onclick = function() {
-	//	var cookies = document.cookie.split(";");
-	//	for (var i = 0; i < cookies.length; i++) {
-	//		var cookie = cookies[i];
-	//		var eqPos = cookie.indexOf("=");
-	//		var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-	//		document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
-	//	}
-	//	window.location.reload(true);
-	//}
-}())
-</script>
-</body>
-</html>
-`))
+var tmpl = template.Must(template.ParseGlob(path.Join(webconfig.ProjectRootPath(), "templates", "*")))

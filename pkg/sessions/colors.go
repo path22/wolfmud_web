@@ -36,26 +36,26 @@ const (
 	Prompt = Magenta
 )
 
-var Colors = map[string]string{
-	Reset:     "",
-	Bold:      "",
-	Normal:    "",
-	Black:     "",
-	Red:       "",
-	Green:     "",
-	Yellow:    "",
-	Blue:      "",
-	Magenta:   "",
-	Cyan:      "",
-	White:     "",
-	BGBlack:   "",
-	BGRed:     "",
-	BGGreen:   "",
-	BGYellow:  "",
-	BGBlue:    "",
-	BGMagenta: "",
-	BGCyan:    "",
-	BGWhite:   "",
+var Colors = map[string][3]string{
+	Reset:     {"white", "", ""},
+	Bold:      {"", "", "bold"},
+	Normal:    {"", "", "normal"},
+	Black:     {"black", "", ""},
+	Red:       {"red", "", ""},
+	Green:     {"green", "", ""},
+	Yellow:    {"yellow", "", ""},
+	Blue:      {"blue", "", ""},
+	Magenta:   {"magenta", "", ""},
+	Cyan:      {"cyan", "", ""},
+	White:     {"white", "", ""},
+	BGBlack:   {"", "black", ""},
+	BGRed:     {"", "red", ""},
+	BGGreen:   {"", "green", ""},
+	BGYellow:  {"", "yellow", ""},
+	BGBlue:    {"", "blue", ""},
+	BGMagenta: {"", "magenta", ""},
+	BGCyan:    {"", "cyan", ""},
+	BGWhite:   {"", "white", ""},
 	//Brown     : "",
 	//BGBrown   : "",
 	//Good   : "",
@@ -65,9 +65,13 @@ var Colors = map[string]string{
 }
 
 func replaceColors(str string) string {
-	for color, hexColor := range Colors {
+	for pattern, style := range Colors {
 		if strings.Contains(str, ESC) {
-			str = strings.Replace(str, color, hexColor, -1)
+			textColor := style[0]
+			bgColor := style[1]
+			fontWeight := style[2]
+			tag := `</span><span style="color:` + textColor + `;background-color:` + bgColor + `;font-weight:` + fontWeight + `;">`
+			str = strings.Replace(str, pattern, tag, -1)
 		}
 
 	}
