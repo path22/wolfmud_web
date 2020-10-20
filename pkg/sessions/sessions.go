@@ -236,4 +236,4 @@ func setCookieDays(w http.ResponseWriter, days int, cookie string) {
 	})
 }
 
-var tmpl = template.Must(template.ParseGlob(path.Join(webconfig.ProjectRootPath(), "templates", "*")))
+var tmpl = template.Must(template.ParseGlob(path.Join("templates", "*")))
