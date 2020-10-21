@@ -1,6 +1,8 @@
 package sessions
 
-import "strings"
+import (
+	"strings"
+)
 
 const (
 	ESC       = "\x1b"
@@ -65,6 +67,10 @@ var Colors = map[string][3]string{
 }
 
 func replaceColors(str string) string {
+	if str == "" {
+		return ""
+	}
+	str = strings.TrimSpace(str)
 	for pattern, style := range Colors {
 		if strings.Contains(str, ESC) {
 			textColor := style[0]
@@ -73,7 +79,9 @@ func replaceColors(str string) string {
 			tag := `</span><span style="color:` + textColor + `;background-color:` + bgColor + `;font-weight:` + fontWeight + `;">`
 			str = strings.Replace(str, pattern, tag, -1)
 		}
-
 	}
+	str = strings.TrimPrefix(str, "</span>")
+	str = strings.Replace(str, "\n", "<br>", -1)
+	str = "<br>" + str + "</span> "
 	return str
 }

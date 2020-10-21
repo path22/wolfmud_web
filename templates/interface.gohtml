@@ -4,17 +4,26 @@
     <meta charset="UTF-8">
     <title>WolfMud</title>
 </head>
-<body style="background-color: gray;">
-<div id="message"></div>
-<div style="width: 90%; text-align: center; position: absolute; bottom: 20px">
-    <label style="color:white;">Command:
-        <input style="width: 50%; height: 30px" id="command" type="text" name="command"></label>
-    <input style="height: 36px;" id="send" type="button" value="Enter">
+<body style="background-color: #312537;margin: 0px;">
+<div id="message" style="margin-bottom: 120px;"></div>
+<div style="position: fixed; bottom:0; width: 100%; height: 100px; background-color: #251b27">
+    <div style="width: 100%; text-align: center; position: absolute; bottom: 29px">
+        <label style="color:white;">Command:
+            <input style="width: 50%; height: 30px" id="command" type="text" name="command"></label>
+        <input style="height: 36px;" id="send" type="button" value="Enter">
+    </div>
 </div>
 <!-- <input id="otherAccount" type="button" value="Other Account"> -->
 <script>
     (function() {
         let messageField = document.getElementById("message");
+        (function() {
+            fetch('/message?last=true')
+                .then(response => response.text())
+                .then(data => {
+                    messageField.innerHTML += data.toString();
+                });
+        }())
         setInterval(function() {
             fetch('/message')
                 .then(response => response.text())
@@ -22,14 +31,32 @@
                     if (data.toString() === "" || data == undefined) {
                         return
                     }
-                    messageField.innerHTML += data+"\n";
+                    if (data.includes("password")) {
+                        let commandField = document.getElementById("command");
+                        commandField.type = "password"
+                    } else {
+                        commandField.type = "text"
+                    }
+                    messageField.innerHTML += data.toString();
                     window.scrollTo(0,document.body.scrollHeight);
                 });
         }, 1000);
         let commandField = document.getElementById("command");
         commandField.onkeydown = function(e) {
             if (e.keyCode === 13) {
-                fetch('/command?cmd='+commandField.value);
+                if (commandField.type === "password") {
+                    messageField.innerHTML += `<span style="color: magenta">******</span><br>`
+                } else {
+                    messageField.innerHTML += `<span style="color: magenta">` + commandField.value + "</span><br>"
+                }
+                fetch('/command?cmd='+commandField.value)
+                    .then(response => response.text())
+                    .then(data => {
+                        if (data.toString() === "" || data == undefined) {
+                            return
+                        }
+                        messageField.innerHTML += data.toString() + "\n";
+                    });
                 commandField.value = "";
             }
         }

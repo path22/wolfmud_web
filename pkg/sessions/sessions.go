@@ -2,7 +2,6 @@ package sessions
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	webconfig "github.com/path22/wolfmud_web/pkg/config"
 	"math/rand"
@@ -22,9 +21,7 @@ const (
 )
 
 var (
-	jsonErrMessage = map[string]interface{}{
-		"err": "Something went wrong, please update the page",
-	}
+	errMessage = []byte(`<span style="color:white;">Something went wrong, please update the page</span><br>`)
 )
 
 type Sessions struct {
@@ -41,6 +38,7 @@ type session struct {
 	tcpConnect *net.Conn
 	bufMux     sync.Mutex
 	buffer     []byte
+	lastBuffer []byte
 	lastUpdate time.Time
 }
 
@@ -49,13 +47,15 @@ func (s *session) run() {
 	connR := bufio.NewReader(*s.tcpConnect)
 
 	for {
-		line, _, err := connR.ReadLine()
+		line, err := connR.ReadString('>')
 		if err != nil {
-			fmt.Println("err read session")
+			fmt.Println(err)
+			(*s.tcpConnect).Close()
+			break
 		}
-		coloredLine := replaceColors(string(line))
+		coloredLine := replaceColors(line)
 		s.bufMux.Lock()
-		s.buffer = append(s.buffer, []byte(coloredLine+"<br>")...)
+		s.buffer = append(s.buffer, []byte(coloredLine)...)
 		s.bufMux.Unlock()
 	}
 }
@@ -96,6 +96,9 @@ func New(conf *webconfig.System) *Sessions {
 
 func (s *Sessions) drop(id string) {
 	s.mux.Lock()
+	conn := *s.sessions[id].tcpConnect
+	conn.Write([]byte("QUIT"))
+	conn.Close()
 	delete(s.sessions, id)
 	s.mux.Unlock()
 }
@@ -132,7 +135,6 @@ func (s *Sessions) get(id string) *session {
 func (s *Sessions) manager() {
 	for !s.shutdown {
 		time.Sleep(s.cleanInterval)
-		fmt.Println("manager running")
 
 		oldestLastUpdate := time.Now().Add(-s.liveTime)
 
@@ -163,9 +165,6 @@ func (s *Sessions) Interface(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.update(sessionID)
-	//if !ok {
-	//s.add(sessionID)
-	//}
 
 	setCookieDays(w, 1, sessionID)
 
@@ -173,6 +172,8 @@ func (s *Sessions) Interface(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Sessions) Message(w http.ResponseWriter, r *http.Request) {
+
+	useLastBuffer, _ := strconv.ParseBool(r.FormValue("last"))
 
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil {
@@ -188,18 +189,25 @@ func (s *Sessions) Message(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess := s.get(sessionID)
-	sess.bufMux.Lock()
-	w.Write(sess.buffer)
-	sess.buffer = []byte("")
-	sess.bufMux.Unlock()
+	func() {
+		sess.bufMux.Lock()
+		defer sess.bufMux.Unlock()
+		w.Write(sess.buffer)
+		if useLastBuffer {
+			w.Write(sess.lastBuffer)
+		}
+		if len(sess.buffer) != 0 {
+			sess.lastBuffer = sess.buffer
+		}
+		sess.buffer = []byte("")
+	}()
 }
 
 func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
-	encoder := json.NewEncoder(w)
 
 	id, err := r.Cookie(sessionCookie)
 	if err != nil || id.Value == "" {
-		encoder.Encode(jsonErrMessage)
+		w.Write(errMessage)
 		return
 	}
 
@@ -207,7 +215,7 @@ func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
 	if command == "QUIT" {
 		s.drop(id.Value)
 		setCookieDays(w, 0, id.Value)
-		http.Redirect(w, r, r.URL.String(), http.StatusPermanentRedirect)
+		w.Write([]byte("You're quited, reload the page to reconnect"))
 		return
 	}
 
@@ -221,7 +229,8 @@ func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
 	conn := *sess.tcpConnect
 	_, err = conn.Write([]byte(command + "\n"))
 	if err != nil {
-		encoder.Encode(jsonErrMessage)
+		w.Write(errMessage)
+		return
 	}
 
 	setCookieDays(w, 1, id.Value)
