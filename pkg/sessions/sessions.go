@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	webconfig "github.com/path22/wolfmud_web/pkg/config"
+	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -17,7 +18,8 @@ import (
 )
 
 const (
-	sessionCookie = "session"
+	sessionCookie     = "session"
+	disconnectPattern = "EOFDisconnect"
 )
 
 var (
@@ -49,6 +51,11 @@ func (s *session) run() {
 	for {
 		line, err := connR.ReadString('>')
 		if err != nil {
+			if err == io.EOF {
+				s.bufMux.Lock()
+				s.buffer = append(s.buffer, []byte(disconnectPattern)...)
+				s.bufMux.Unlock()
+			}
 			fmt.Println(err)
 			(*s.tcpConnect).Close()
 			break
@@ -74,33 +81,6 @@ func New(conf *webconfig.System) *Sessions {
 		cleanInterval: sessionsCleanInterval,
 		liveTime:      sessionsLiveTime,
 	}
-}
-
-//
-//func (s *Sessions) add(id string) {
-//	tcpConn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", config.Server.Host, config.Server.Port))
-//	if err != nil {
-//		panic(err)
-//	}
-//	sess := &session{
-//		id:         id,
-//		tcpConnect: &tcpConn,
-//		lastUpdate: time.Now(),
-//		buffer: []byte(""),
-//	}
-//	go sess.run()
-//	s.mux.Lock()
-//	s.sessions[id] = sess
-//	s.mux.Unlock()
-//}
-
-func (s *Sessions) drop(id string) {
-	s.mux.Lock()
-	conn := *s.sessions[id].tcpConnect
-	conn.Write([]byte("QUIT"))
-	conn.Close()
-	delete(s.sessions, id)
-	s.mux.Unlock()
 }
 
 func (s *Sessions) update(id string) bool {
@@ -212,13 +192,6 @@ func (s *Sessions) Command(w http.ResponseWriter, r *http.Request) {
 	}
 
 	command := r.FormValue("cmd")
-	if command == "QUIT" {
-		s.drop(id.Value)
-		setCookieDays(w, 0, id.Value)
-		w.Write([]byte("You're quited, reload the page to reconnect"))
-		return
-	}
-
 	ok := s.update(id.Value)
 	if !ok {
 		setCookieDays(w, 0, id.Value)
