@@ -27,7 +27,7 @@
             fetch('/message?last=true')
                 .then(response => {
                     if (response.status >= 500) {
-                        messageField.innerHTML += "Server is not available";
+                        messageField.innerHTML += `<span style="color:white;">Server is not available</span><br>`;
                         return
                     }
                   return response.text()
@@ -51,7 +51,7 @@
             fetch('/message')
                 .then(response => {
                     if (response.status >= 500) {
-                        messageField.innerHTML += "Server is not available";
+                        messageField.innerHTML += `<span style="color:white;">Server is not available</span><br>`;
                         return
                     }
                     return response.text()
