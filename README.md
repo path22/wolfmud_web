@@ -6,9 +6,9 @@ WolfMUD web interface
 ```
 make run
 ```
-### Update package and run
+### Update package
 ```
-make update_run
+make update
 ```
 ### Update WolfMUD
 ```
