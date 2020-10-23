@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>WolfMud</title>
 </head>
 <body style="background-color: #201822;margin: 0px;text-align: center;">
@@ -56,7 +59,8 @@
                         }
                         window.location.reload(true);
                     }
-                    if (data.includes("Enter the password")) {
+                    let re = /Enter.{1,15}password/g
+                    if (re.test(data.toString())) {
                         let commandField = document.getElementById("command");
                         commandField.type = "password"
                     } else {
